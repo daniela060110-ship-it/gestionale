@@ -3,37 +3,51 @@ import pandas as pd
 from datetime import datetime, timedelta
 
 # Configurazione Pagina
-st.set_page_config(page_title="SafetyManager", layout="wide")
+st.set_page_config(page_title="SafetyManager 81/08", layout="wide")
 
-# --- STILE CSS PER INTERFACCIA CHIARA E PULITA ---
+# --- CSS PER TESTO NERO E INTERFACCIA CHIARA ---
 st.markdown("""
     <style>
-    .stApp { background-color: #F9FAFB; }
-    .stButton>button { border-radius: 8px; }
-    .main-card {
-        background-color: white;
-        padding: 2rem;
-        border-radius: 12px;
+    /* Forza il colore del testo globale */
+    html, body, [data-testid="stWidgetLabel"], .stText, p, h1, h2, h3, span {
+        color: #1F2937 !important; 
+    }
+    .stApp { background-color: #FFFFFF; }
+    
+    /* Card per i dipendenti e documenti */
+    .element-container div.stMarkdown div p { color: #1F2937 !important; }
+    
+    /* Sidebar scura con testo chiaro per contrasto */
+    [data-testid="stSidebar"] { background-color: #111827; }
+    [data-testid="stSidebar"] * { color: #FFFFFF !important; }
+    
+    /* Stile per i box dei documenti */
+    .stCard {
+        background-color: #F9FAFB;
+        padding: 15px;
+        border-radius: 10px;
         border: 1px solid #E5E7EB;
+        margin-bottom: 10px;
     }
     </style>
     """, unsafe_allow_html=True)
 
-# Inizializzazione Database (Session State)
+# Inizializzazione Database
 if 'aziende' not in st.session_state:
     st.session_state.aziende = {}
 
 # --- SIDEBAR ---
 with st.sidebar:
     st.title("🛡️ SafetyManager")
-    menu = st.radio("Vai a:", ["📊 Dashboard", "🏢 Gestione Aziende"])
+    st.caption("Gestione D.Lgs. 81/08")
+    st.divider()
+    menu = st.radio("Navigazione", ["📊 Dashboard", "🏢 Aziende"])
 
 # --- DASHBOARD ---
 if menu == "📊 Dashboard":
-    st.title("Dashboard")
+    st.header("Dashboard")
     st.write("Panoramica scadenze e stato sicurezza")
     
-    # Logica per contatori
     scadenze_totali = []
     dip_attivi = 0
     for az in st.session_state.aziende.values():
@@ -52,107 +66,106 @@ if menu == "📊 Dashboard":
     c3.metric("In scadenza (30gg)", len(in_scadenza))
     c4.metric("Scaduti", len(scaduti))
 
+    st.subheader("⚠️ Avvisi Recenti")
+    if not in_scadenza and not scadute:
+        st.success("Tutto in regola!")
+    else:
+        for s in scaduti:
+            st.error(f"SCADUTO: {s['Tipo']} - {s['Dipendente']} ({s['Azienda']})")
+        for s in in_scadenza:
+            st.warning(f"IN SCADENZA: {s['Tipo']} - {s['Dipendente']} ({s['Azienda']})")
+
 # --- GESTIONE AZIENDE ---
 else:
-    st.title("Aziende")
+    st.header("Aziende")
     
-    # Sezione Nuova Azienda
     with st.expander("➕ Aggiungi Nuova Azienda"):
-        with st.form("form_azienda"):
+        with st.form("nuova_az"):
             c1, c2 = st.columns(2)
-            nome_az = c1.text_input("Nome Azienda *")
+            nome = c1.text_input("Nome Azienda *")
             piva = c2.text_input("P.IVA")
-            sede_l = c1.text_input("Sede Legale")
-            sede_o = c2.text_input("Sede Operativa")
-            if st.form_submit_button("Crea Azienda"):
-                if nome_az:
-                    st.session_state.aziende[nome_az] = {
-                        "info": {"piva": piva, "sede_l": sede_l, "sede_o": sede_o},
-                        "dipendenti": [],
-                        "documenti": []
+            sl = c1.text_input("Sede Legale")
+            so = c2.text_input("Sede Operativa")
+            if st.form_submit_button("Salva"):
+                if nome:
+                    st.session_state.aziende[nome] = {
+                        "info": {"piva": piva, "sede_l": sl, "sede_o": so},
+                        "dipendenti": [], "documenti": []
                     }
-                    st.success(f"Azienda {nome_az} creata!")
                     st.rerun()
 
-    # Selezione Azienda
     lista_az = list(st.session_state.aziende.keys())
     if lista_az:
-        scelta = st.selectbox("Seleziona Azienda per operare:", lista_az)
-        az_corr = st.session_state.aziende[scelta]
+        scelta = st.selectbox("Seleziona Azienda:", lista_az)
+        az = st.session_state.aziende[scelta]
 
-        # Header Azienda selezionata (come da tua foto)
-        st.markdown(f"### 🏢 {scelta}")
-        st.info(f"**P.IVA:** {az_corr['info']['piva']} | **Sede Operativa:** {az_corr['info']['sede_o']}")
+        st.subheader(f"🏢 {scelta}")
+        st.write(f"**P.IVA:** {az['info']['piva']} | **Sede Operativa:** {az['info']['sede_o']}")
 
-        # TAB DOCUMENTI E DIPENDENTI
         tab_doc, tab_dip = st.tabs(["📄 Documenti", "👥 Dipendenti"])
 
         # --- TAB DIPENDENTI ---
         with tab_dip:
-            c_tit, c_add = st.columns([4, 1])
-            with c_add:
-                with st.popover("➕ Aggiungi Dipendente"):
-                    with st.form("form_dip"):
-                        n_d = st.text_input("Nome")
-                        c_d = st.text_input("Cognome")
-                        d_n = st.date_input("Data di Nascita", value=datetime(1990,1,1))
-                        l_n = st.text_input("Luogo di Nascita")
-                        man = st.text_input("Mansione")
-                        if st.form_submit_button("Salva Dipendente"):
-                            az_corr['dipendenti'].append({
-                                "NomeCompleto": f"{n_d} {c_d}", "Info": f"{n_d} {c_d} - {man}",
-                                "Mansione": man, "In Forza": True
-                            })
-                            st.rerun()
+            with st.popover("➕ Aggiungi Dipendente"):
+                with st.form("f_dip"):
+                    n = st.text_input("Nome")
+                    c = st.text_input("Cognome")
+                    dn = st.date_input("Data Nascita", value=datetime(1980,1,1))
+                    ln = st.text_input("Luogo Nascita")
+                    man = st.text_input("Mansione")
+                    if st.form_submit_button("Registra"):
+                        az['dipendenti'].append({
+                            "Nome": f"{n} {c}", "Dati": f"{dn} - {ln}",
+                            "Mansione": man, "In Forza": True
+                        })
+                        st.rerun()
             
-            # Lista Dipendenti con Switch
-            for i, d in enumerate(az_corr['dipendenti']):
+            for i, d in enumerate(az['dipendenti']):
                 with st.container(border=True):
                     col1, col2, col3 = st.columns([3, 1, 1])
-                    col1.write(f"**{d['NomeCompleto']}**\n{d['Mansione']}")
-                    d['In Forza'] = col2.toggle("In forza", value=d['In Forza'], key=f"f_{i}")
-                    if col3.button("🗑️", key=f"del_d_{i}"):
-                        az_corr['dipendenti'].pop(i)
+                    col1.write(f"**{d['Nome']}** \n*{d['Mansione']}*")
+                    d['In Forza'] = col2.toggle("In forza", value=d['In Forza'], key=f"d_{scelta}_{i}")
+                    if col3.button("🗑️", key=f"del_d_{scelta}_{i}"):
+                        az['dipendenti'].pop(i)
                         st.rerun()
 
         # --- TAB DOCUMENTI ---
         with tab_doc:
-            c_tit2, c_add2 = st.columns([4, 1])
-            with c_add2:
-                with st.popover("➕ Aggiungi Documento"):
-                    with st.form("form_doc"):
-                        tipo = st.selectbox("Tipo Documento *", [
-                            "Nomina RSPP", "Attestato RSPP", "Nomina PREPOSTO", "Attestato PREPOSTO",
-                            "Elezione RLS", "Attestato RLS", "Antincendio LIVELLO I", "Antincendio LIVELLO II",
-                            "Antincendio LIVELLO III", "Primo Soccorso", "Specifica BASSO", "Specifica MEDIO",
-                            "Specifica ALTO", "Medico Competente", "Idoneità Medica", "Altro"
-                        ])
-                        dip_nomi = ["Aziendale (Nessuno)"] + [d['NomeCompleto'] for d in az_corr['dipendenti']]
-                        dip_scelto = st.selectbox("Dipendente", dip_nomi)
-                        emiss = st.date_input("Data Emissione")
-                        validita = st.number_input("Anni Validità", min_value=1, value=5)
-                        scad = emiss.replace(year=emiss.year + int(validita))
-                        note = st.text_area("Note")
-                        if st.form_submit_button("Salva"):
-                            az_corr['documenti'].append({
-                                "Tipo": tipo, "Dipendente": dip_scelto,
-                                "Emissione": emiss, "Scadenza": scad, "Note": note
-                            })
-                            st.rerun()
+            with st.popover("➕ Aggiungi Documento"):
+                with st.form("f_doc"):
+                    tipo = st.selectbox("Tipo Documento", [
+                        "Nomina RSPP", "Attestato RSPP", "Nomina PREPOSTO", "Attestato PREPOSTO",
+                        "Elezione RLS", "Attestato RLS", "Antincendio LIVELLO I", "Antincendio LIVELLO II",
+                        "Antincendio LIVELLO III", "Primo Soccorso", "Specifica BASSO", "Specifica MEDIO",
+                        "Specifica ALTO", "Medico Competente", "Idoneità Medica", "Altro"
+                    ])
+                    nomi_d = [d['Nome'] for d in az['dipendenti']]
+                    dip_s = st.selectbox("Assegna a Dipendente", ["Aziendale"] + nomi_d)
+                    emiss = st.date_input("Data Emissione")
+                    anni = st.number_input("Anni Validità", value=5)
+                    scad = emiss.replace(year=emiss.year + anni)
+                    note = st.text_area("Note")
+                    if st.form_submit_button("Salva Documento"):
+                        az['documenti'].append({
+                            "Tipo": tipo, "Dipendente": dip_s, "Azienda": scelta,
+                            "Emissione": emiss, "Scadenza": scad, "Note": note
+                        })
+                        st.rerun()
 
-            # Lista Documenti
-            for j, doc in enumerate(az_corr['documenti']):
+            for j, doc in enumerate(az['documenti']):
                 with st.container(border=True):
                     col1, col2, col3 = st.columns([3, 1, 1])
-                    col1.write(f"**{doc['Tipo']}**")
-                    col1.caption(f"{doc['Dipendente']} — Scade: {doc['Scadenza']}")
-                    
-                    # Calcolo giorni rimanenti
                     giorni = (doc['Scadenza'] - datetime.now().date()).days
-                    col2.markdown(f"**{giorni} gg**")
+                    col1.write(f"**{doc['Tipo']}** ({doc['Dipendente']})")
+                    col1.caption(f"Scadenza: {doc['Scadenza']} | Note: {doc['Note']}")
                     
-                    if col3.button("🗑️", key=f"del_doc_{j}"):
-                        az_corr['documenti'].pop(j)
+                    if giorni < 0:
+                        col2.error(f"Scaduto ({giorni} gg)")
+                    elif giorni <= 30:
+                        col2.warning(f"{giorni} gg")
+                    else:
+                        col2.success(f"{giorni} gg")
+                    
+                    if col3.button("🗑️", key=f"del_doc_{scelta}_{j}"):
+                        az['documenti'].pop(j)
                         st.rerun()
-    else:
-        st.info("Inizia aggiungendo la tua prima azienda qui sopra!")
